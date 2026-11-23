@@ -13,7 +13,7 @@ private:
     int tiempoEjecucion;
     int tiempoRestante;
     int tamanioProceso;
-    int tamanioBloqueBuddy; // Tamaño de potencia de 2 asignado en Buddy System
+    int tamanioBloque; // Usado para potencias de 2 en Buddy System
 
 public:
     Proceso() {
@@ -21,14 +21,14 @@ public:
         this->tiempoEjecucion = 0;
         this->tiempoRestante = 0;
         this->tamanioProceso = 0;
-        this->tamanioBloqueBuddy = 0;
+        this->tamanioBloque = 0;
     }
 
-    // Constructor para huecos / bloques libres
+    // Constructor para representar espacios libres en memoria (Id = 0)
     Proceso(int tamanioMemoria) {
         this->idProceso = 0;
         this->tamanioProceso = tamanioMemoria;
-        this->tamanioBloqueBuddy = tamanioMemoria;
+        this->tamanioBloque = tamanioMemoria;
         this->tiempoEjecucion = 0;
         this->tiempoRestante = 0;
     }
@@ -37,7 +37,7 @@ public:
     int getTiempoEjecucion() const { return this->tiempoEjecucion; }
     int getTiempoRestante() const { return this->tiempoRestante; }
     int getTamanioProceso() const { return this->tamanioProceso; }
-    int getTamanioBloqueBuddy() const { return this->tamanioBloqueBuddy; }
+    int getTamanioBloque() const { return this->tamanioBloque; }
 
     void setTiempoEjecucion(int tiempo) {
         this->tiempoEjecucion = tiempo;
@@ -45,14 +45,14 @@ public:
     }
     void setTiempoRestante(int tiempo) { this->tiempoRestante = tiempo; }
     void setTamanioProceso(int tamanio) { this->tamanioProceso = tamanio; }
-    void setTamanioBloqueBuddy(int tamanio) { this->tamanioBloqueBuddy = tamanio; }
+    void setTamanioBloque(int tamanio) { this->tamanioBloque = tamanio; }
 
-    void reemplazarProceso(const Proceso& p) {
+    void asignarDatos(const Proceso& p) {
         this->idProceso = p.idProceso;
         this->tiempoEjecucion = p.tiempoEjecucion;
         this->tiempoRestante = p.tiempoRestante;
         this->tamanioProceso = p.tamanioProceso;
-        this->tamanioBloqueBuddy = p.tamanioBloqueBuddy;
+        this->tamanioBloque = p.tamanioBloque;
     }
 
     friend ostream& operator<<(ostream& os, const Proceso& p) {
