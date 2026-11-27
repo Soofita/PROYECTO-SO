@@ -1,0 +1,238 @@
+prueben este codigo #include <iostream>
+#include <iomanip>
+#include <deque>
+#include <list>
+#include <cstdlib>
+#include <ctime>
+#include <windows.h>
+#include <iterator>
+#include "proceso.hpp"
+
+using namespace std;
+
+// Constantes de memoria (en KB)
+const int MEM_1MB = 1024;
+const int MEM_4MB = 4096;
+const int MEM_8MB = 8192;
+const int MIN_SPLIT_BUDDY = 32;
+
+// Algoritmos asignados al equipo
+enum Algoritmo {
+    PRIMER_AJUSTE = 1,
+    BUDDY_SYSTEM = 2
+};
+
+// Parámetros principales del sistema
+int quantumSistema = 0;
+int tamanoMaxProceso = 0;
+int quantumMaxProceso = 0;
+int tamanoMemoriaTotal = MEM_4MB;
+Algoritmo algoritmoActual;
+
+// Prototipos de funciones del avance
+void MostrarMemoria(const list<Proceso>& memoria);
+void MostrarColaRR(const deque<Proceso>& colaRR);
+bool AsignarPrimerAjuste(list<Proceso>& memoria, Proceso& p);
+bool AsignarBuddySystem(list<Proceso>& memoria, Proceso& p);
+int CalcularBloqueBuddy(int tamanoProceso);
+void EjecutarRoundRobin(deque<Proceso>& colaRR, list<Proceso>& memoria);
+void LiberarMemoria(list<Proceso>& memoria, int idProceso);
+
+void ImprimirItem(int id, int tamanio, int q) {
+    cout << "[" << id << "," << tamanio << "," << q << "]";
+}
+
+int main() {
+    SetConsoleTitleA("Simulador");
+    srand(time(NULL));
+
+    list<Proceso> memoria;
+    deque<Proceso> colaRR;
+
+    cout << "+--------------------------------------------------------+" << endl;
+    cout << "|     SIMULADOR DE MEMORIA Y PLANIFICACION ROUND ROBIN   |" << endl;
+    cout << "|         Primer Ajuste / Buddy System + Round Robin     |" << endl;
+    cout << "+--------------------------------------------------------+" << endl << endl;
+
+    // 1. Configuración de memoria y cuantos del sistema
+    cout << "  [1] Tamanio de memoria (1: 1MB, 2: 4MB, 3: 8MB): ";
+    int opMem;
+    cin >> opMem;
+    if (opMem == 1) tamanoMemoriaTotal = MEM_1MB;
+    else if (opMem == 3) tamanoMemoriaTotal = MEM_8MB;
+    else tamanoMemoriaTotal = MEM_4MB;
+
+    cout << "  [2] Quantum del sistema: ";
+    cin >> quantumSistema;
+
+    cout << "  [3] Tamanio maximo por proceso (KB): ";
+    cin >> tamanoMaxProceso;
+
+    cout << "  [4] Quantum maximo por proceso: ";
+    cin >> quantumMaxProceso;
+
+    cout << "  [5] Algoritmo (1: Primer Ajuste, 2: Buddy System): ";
+    int opAlg;
+    cin >> opAlg;
+    algoritmoActual = (opAlg == 2) ? BUDDY_SYSTEM : PRIMER_AJUSTE;
+
+    // Inicializar toda la memoria como un bloque libre (Id = 0)
+    memoria.push_back(Proceso(tamanoMemoriaTotal));
+
+    cout << "\nCompactando huecos" << endl;
+    MostrarMemoria(memoria);
+    cout << endl << endl;
+
+    // Ciclos infinitos de simulación
+    int ciclo = 1;
+    while (true) {
+        // Generación silenciosa de proceso con ID autoincremental y cuanto aleatorio
+        Proceso nuevo;
+        nuevo.setTamanioProceso(rand() % tamanoMaxProceso + 1);
+        nuevo.setTiempoEjecucion(rand() % quantumMaxProceso + 1);
+
+        bool asignado = false;
+        if (algoritmoActual == PRIMER_AJUSTE) {
+            asignado = AsignarPrimerAjuste(memoria, nuevo);
+        } else {
+            asignado = AsignarBuddySystem(memoria, nuevo);
+        }
+
+        if (asignado) {
+            cout << "Cargando Proceso ";
+            ImprimirItem(nuevo.getId(), nuevo.getTamanioProceso(), nuevo.getTiempoRestante());
+            cout << endl;
+            colaRR.push_back(nuevo);
+            MostrarMemoria(memoria);
+            cout << endl;
+        }
+
+        // Atención de cuantos con Round Robin
+        EjecutarRoundRobin(colaRR, memoria);
+
+        cout << endl;
+        ciclo++;
+        Sleep(800);
+    }
+
+    return 0;
+}
+
+// ==================== ALGORITMOS DE ASIGNACIÓN ====================
+
+bool AsignarPrimerAjuste(list<Proceso>& memoria, Proceso& p) {
+    for (auto it = memoria.begin(); it != memoria.end(); ++it) {
+        if (it->getId() == 0 && it->getTamanioProceso() >= p.getTamanioProceso()) {
+            int sobrante = it->getTamanioProceso() - p.getTamanioProceso();
+            if (sobrante > 0) {
+                memoria.insert(next(it), Proceso(sobrante));
+            }
+            it->asignarDatos(p);
+            return true;
+        }
+    }
+    return false;
+}
+
+int CalcularBloqueBuddy(int tamanoProceso) {
+    int bloque = MIN_SPLIT_BUDDY; // Mínimo 32 KB
+    while (bloque < tamanoProceso) {
+        bloque *= 2;
+    }
+    return bloque;
+}
+
+bool AsignarBuddySystem(list<Proceso>& memoria, Proceso& p) {
+    int bloqueNecesario = CalcularBloqueBuddy(p.getTamanioProceso());
+
+    for (auto it = memoria.begin(); it != memoria.end(); ++it) {
+        if (it->getId() == 0 && it->getTamanioBloque() >= bloqueNecesario) {
+            // Dividir el bloque en mitades hasta llegar al tamaño potencia de 2 requerido
+            while (it->getTamanioBloque() > bloqueNecesario && (it->getTamanioBloque() / 2) >= MIN_SPLIT_BUDDY) {
+                int mitad = it->getTamanioBloque() / 2;
+                it->setTamanioProceso(mitad);
+                it->setTamanioBloque(mitad);
+                memoria.insert(next(it), Proceso(mitad));
+            }
+
+            p.setTamanioBloque(bloqueNecesario);
+            it->asignarDatos(p);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ==================== ROUND ROBIN Y LIBERACIÓN BÁSICA ====================
+
+void EjecutarRoundRobin(deque<Proceso>& colaRR, list<Proceso>& memoria) {
+    if (colaRR.empty()) {
+        return;
+    }
+
+    Proceso actual = colaRR.front();
+    colaRR.pop_front();
+
+    cout << "Procesando ";
+    ImprimirItem(actual.getId(), actual.getTamanioProceso(), actual.getTiempoRestante());
+    cout << endl;
+
+    MostrarColaRR(colaRR);
+    cout << endl;
+
+    if (actual.getTiempoRestante() > quantumSistema) {
+        actual.setTiempoRestante(actual.getTiempoRestante() - quantumSistema);
+        colaRR.push_back(actual);
+
+        // Actualizar quantum restante en la vista de memoria
+        for (auto& bloque : memoria) {
+            if (bloque.getId() == actual.getId()) {
+                bloque.setTiempoRestante(actual.getTiempoRestante());
+                break;
+            }
+        }
+        MostrarMemoria(memoria);
+        cout << endl;
+    } else {
+        actual.setTiempoRestante(0);
+        cout << "Descargando proceso ";
+        ImprimirItem(actual.getId(), actual.getTamanioProceso(), 0);
+        cout << endl;
+        LiberarMemoria(memoria, actual.getId());
+    }
+}
+
+void LiberarMemoria(list<Proceso>& memoria, int idProceso) {
+    for (auto it = memoria.begin(); it != memoria.end(); ++it) {
+        if (it->getId() == idProceso) {
+            int tamLiberado = (algoritmoActual == BUDDY_SYSTEM) ? it->getTamanioBloque() : it->getTamanioProceso();
+            it->asignarDatos(Proceso(tamLiberado));
+            MostrarMemoria(memoria);
+            cout << endl;
+           
+        }
+    }
+}
+
+// ==================== VISUALIZACIÓN EN CONSOLA ====================
+
+void MostrarMemoria(const list<Proceso>& memoria) {
+    for (const auto& bloque : memoria) {
+        if (bloque.getId() == 0) {
+            int tamLibre = (algoritmoActual == BUDDY_SYSTEM) ? bloque.getTamanioBloque() : bloque.getTamanioProceso();
+            ImprimirItem(0, tamLibre, 0);
+        } else if (algoritmoActual == BUDDY_SYSTEM) {
+            ImprimirItem(bloque.getId(), bloque.getTamanioBloque(), bloque.getTiempoRestante());
+        } else {
+            ImprimirItem(bloque.getId(), bloque.getTamanioProceso(), bloque.getTiempoRestante());
+        }
+    }
+}
+
+void MostrarColaRR(const deque<Proceso>& colaRR) {
+    cout << "Cola RR";
+    for (const auto& p : colaRR) {
+        cout << " ";
+        ImprimirItem(p.getId(), p.getTamanioProceso(), p.getTiempoRestante());
+    }
+}
