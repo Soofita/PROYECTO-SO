@@ -1,9 +1,10 @@
-
 #include <iostream>
+#include <iomanip>
 #include <deque>
 #include <list>
 #include <cstdlib>
 #include <ctime>
+#include <conio.h>
 #include <windows.h>
 #include <iterator>
 #include "proceso.hpp"
@@ -28,8 +29,13 @@ int tamanoMaxProceso = 0;
 int quantumMaxProceso = 0;
 int tamanoMemoriaTotal = MEM_4MB;
 Algoritmo algoritmoActual;
+bool detenerSimulacion = false;
 
-// Prototipos de funciones del avance
+// Variables para controlar proceso en espera cuando la memoria está llena
+bool hayProcesoEnEspera = false;
+Proceso procesoEnEspera(0);
+
+// Prototipos de funciones
 void MostrarMemoria(const list<Proceso>& memoria);
 void MostrarColaRR(const deque<Proceso>& colaRR);
 bool AsignarPrimerAjuste(list<Proceso>& memoria, Proceso& p);
@@ -37,34 +43,42 @@ bool AsignarBuddySystem(list<Proceso>& memoria, Proceso& p);
 int CalcularBloqueBuddy(int tamanoProceso);
 void EjecutarRoundRobin(deque<Proceso>& colaRR, list<Proceso>& memoria);
 void LiberarMemoria(list<Proceso>& memoria, int idProceso);
+void PausaControlada(int milisegundos);
+
+void ImprimirItem(int id, int tamanio, int q) {
+    cout << "[" << id << "," << tamanio << "," << q << "]";
+}
 
 int main() {
+    SetConsoleTitleA("Simulador");
     srand(time(NULL));
 
     list<Proceso> memoria;
     deque<Proceso> colaRR;
 
-    cout << "=== AVANCE 1: GESTION DE MEMORIA Y ROUND ROBIN ===" << endl;
-    cout << "Algoritmos: Primer Ajuste / Buddy System + Round Robin" << endl << endl;
+    cout << "+--------------------------------------------------------+" << endl;
+    cout << "|     SIMULADOR DE MEMORIA Y PLANIFICACION ROUND ROBIN   |" << endl;
+    cout << "|         Primer Ajuste / Buddy System + Round Robin     |" << endl;
+    cout << "+--------------------------------------------------------+" << endl << endl;
 
     // 1. Configuración de memoria y cuantos del sistema
-    cout << "Seleccione tamanio de memoria (1: 1MB, 2: 4MB, 3: 8MB): ";
+    cout << "  [1] Tamanio de memoria (1: 1MB, 2: 4MB, 3: 8MB): ";
     int opMem;
     cin >> opMem;
     if (opMem == 1) tamanoMemoriaTotal = MEM_1MB;
     else if (opMem == 3) tamanoMemoriaTotal = MEM_8MB;
     else tamanoMemoriaTotal = MEM_4MB;
 
-    cout << "Ingrese el quantum del sistema: ";
+    cout << "  [2] Quantum del sistema: ";
     cin >> quantumSistema;
 
-    cout << "Ingrese el tamanio maximo por proceso (KB): ";
+    cout << "  [3] Tamanio maximo por proceso (KB): ";
     cin >> tamanoMaxProceso;
 
-    cout << "Ingrese el quantum maximo por proceso: ";
+    cout << "  [4] Quantum maximo por proceso: ";
     cin >> quantumMaxProceso;
 
-    cout << "Seleccione algoritmo (1: Primer Ajuste, 2: Buddy System): ";
+    cout << "  [5] Algoritmo (1: Primer Ajuste, 2: Buddy System): ";
     int opAlg;
     cin >> opAlg;
     algoritmoActual = (opAlg == 2) ? BUDDY_SYSTEM : PRIMER_AJUSTE;
@@ -72,49 +86,58 @@ int main() {
     // Inicializar toda la memoria como un bloque libre (Id = 0)
     memoria.push_back(Proceso(tamanoMemoriaTotal));
 
-    cout << "\nMemoria inicial: ";
+    cout << "\n[ESPACIO: Pausar/Reanudar | ESC: Detener simulacion]" << endl;
+    cout << "\nCompactando huecos" << endl;
     MostrarMemoria(memoria);
     cout << endl << endl;
 
-    // Prueba controlada de ciclos para demostrar generacion de IDs, cuantos y algoritmos
-    int ciclosPrueba = 8;
-    for (int ciclo = 1; ciclo <= ciclosPrueba; ciclo++) {
+    // Ciclos infinitos de simulación hasta presionar ESC
+    int ciclo = 1;
+    while (!detenerSimulacion) {
         cout << "--- Ciclo " << ciclo << " ---" << endl;
 
-        // Generacion de proceso con ID autoincremental y cuanto aleatorio
-        Proceso nuevo;
-        nuevo.setTamanioProceso(rand() % tamanoMaxProceso + 1);
-        nuevo.setTiempoEjecucion(rand() % quantumMaxProceso + 1);
-
-        cout << "Proceso generado (ID=" << nuevo.getId()<< ", Tam=" << nuevo.getTamanioProceso()<< "KB, Quantum=" << nuevo.getTiempoRestante() << ")" << endl;
+        // Si no había un proceso atorado esperando memoria, generamos uno nuevo
+        if (!hayProcesoEnEspera) {
+            Proceso nuevo;
+            nuevo.setTamanioProceso(rand() % tamanoMaxProceso + 1);
+            nuevo.setTiempoEjecucion(rand() % quantumMaxProceso + 1);
+            procesoEnEspera.asignarDatos(nuevo);
+        }
 
         bool asignado = false;
         if (algoritmoActual == PRIMER_AJUSTE) {
-            asignado = AsignarPrimerAjuste(memoria, nuevo);
+            asignado = AsignarPrimerAjuste(memoria, procesoEnEspera);
         } else {
-            asignado = AsignarBuddySystem(memoria, nuevo);
+            asignado = AsignarBuddySystem(memoria, procesoEnEspera);
         }
 
         if (asignado) {
-            colaRR.push_back(nuevo);
+            cout << "Cargando Proceso ";
+            ImprimirItem(procesoEnEspera.getId(), procesoEnEspera.getTamanioProceso(), procesoEnEspera.getTiempoRestante());
+            cout << endl;
+            colaRR.push_back(procesoEnEspera);
+            hayProcesoEnEspera = false;
+            MostrarMemoria(memoria);
+            cout << endl;
         } else {
-            cout << "-> Sin espacio disponible en memoria para el proceso " << nuevo.getId() << endl;
+            hayProcesoEnEspera = true;
+            cout << "Esperando espacio en memoria para Proceso ";
+            ImprimirItem(procesoEnEspera.getId(), procesoEnEspera.getTamanioProceso(), procesoEnEspera.getTiempoRestante());
+            cout << endl;
         }
 
-        cout << "Memoria: ";
-        MostrarMemoria(memoria);
-        cout << endl;
-
-        // Atencion de cuantos con Round Robin
+        // Atención de cuantos con Round Robin
         EjecutarRoundRobin(colaRR, memoria);
 
         cout << endl;
-        Sleep(800);
+        ciclo++;
+        PausaControlada(800);
     }
 
-    cout << "Fin de la prueba de avance." << endl;
+    cout << "Simulacion detenida por el usuario en el ciclo " << (ciclo - 1) << "." << endl;
     return 0;
 }
+
 // ==================== ALGORITMOS DE ASIGNACIÓN ====================
 
 bool AsignarPrimerAjuste(list<Proceso>& memoria, Proceso& p) {
@@ -142,36 +165,57 @@ int CalcularBloqueBuddy(int tamanoProceso) {
 bool AsignarBuddySystem(list<Proceso>& memoria, Proceso& p) {
     int bloqueNecesario = CalcularBloqueBuddy(p.getTamanioProceso());
 
+    // Buscar de izquierda a derecha el bloque libre más pequeño que alcance (>= bloqueNecesario)
+    // Así se aprovechan primero los huecos pequeños a la izquierda antes de partir bloques grandes
+    auto mejorIt = memoria.end();
+    int menorTamDisponible = tamanoMemoriaTotal + 1;
+
     for (auto it = memoria.begin(); it != memoria.end(); ++it) {
         if (it->getId() == 0 && it->getTamanioBloque() >= bloqueNecesario) {
-            // Dividir el bloque en mitades hasta llegar al tamaño potencia de 2 requerido
-            while (it->getTamanioBloque() > bloqueNecesario &&(it->getTamanioBloque() / 2) >= MIN_SPLIT_BUDDY) {
-                int mitad = it->getTamanioBloque() / 2;
-                it->setTamanioProceso(mitad);
-                it->setTamanioBloque(mitad);
-                memoria.insert(next(it), Proceso(mitad));
+            if (it->getTamanioBloque() < menorTamDisponible) {
+                menorTamDisponible = it->getTamanioBloque();
+                mejorIt = it;
+                if (menorTamDisponible == bloqueNecesario) {
+                    break;
+                }
             }
-
-            p.setTamanioBloque(bloqueNecesario);
-            it->asignarDatos(p);
-            return true;
         }
     }
-    return false;
+
+    if (mejorIt == memoria.end()) {
+        return false;
+    }
+
+    // Dividir de izquierda a derecha: el bloque seleccionado se va partiendo en mitades
+    // y siempre se asigna el proceso en la mitad izquierda más pequeña
+    while (mejorIt->getTamanioBloque() > bloqueNecesario && (mejorIt->getTamanioBloque() / 2) >= MIN_SPLIT_BUDDY) {
+        int mitad = mejorIt->getTamanioBloque() / 2;
+        mejorIt->setTamanioProceso(mitad);
+        mejorIt->setTamanioBloque(mitad);
+        memoria.insert(next(mejorIt), Proceso(mitad));
+    }
+
+    p.setTamanioBloque(bloqueNecesario);
+    mejorIt->asignarDatos(p);
+    return true;
 }
 
-// ==================== ROUND ROBIN Y LIBERACIÓN BÁSICA ====================
+// ==================== ROUND ROBIN Y LIBERACIÓN CONDENSACIÓN ====================
 
 void EjecutarRoundRobin(deque<Proceso>& colaRR, list<Proceso>& memoria) {
     if (colaRR.empty()) {
-        cout << "Cola RR vacia." << endl;
         return;
     }
 
     Proceso actual = colaRR.front();
     colaRR.pop_front();
 
-    cout << "Atendiendo en CPU (Quantum Sistema=" << quantumSistema << "): " << actual << endl;
+    cout << "Procesando ";
+    ImprimirItem(actual.getId(), actual.getTamanioProceso(), actual.getTiempoRestante());
+    cout << endl;
+
+    MostrarColaRR(colaRR);
+    cout << endl;
 
     if (actual.getTiempoRestante() > quantumSistema) {
         actual.setTiempoRestante(actual.getTiempoRestante() - quantumSistema);
@@ -184,15 +228,15 @@ void EjecutarRoundRobin(deque<Proceso>& colaRR, list<Proceso>& memoria) {
                 break;
             }
         }
+        MostrarMemoria(memoria);
+        cout << endl;
     } else {
         actual.setTiempoRestante(0);
-        cout << "-> Proceso " << actual.getId() << " termino su ejecucion." << endl;
+        cout << "Descargando proceso ";
+        ImprimirItem(actual.getId(), actual.getTamanioProceso(), 0);
+        cout << endl;
         LiberarMemoria(memoria, actual.getId());
     }
-
-    cout << "Cola RR: ";
-    MostrarColaRR(colaRR);
-    cout << endl;
 }
 
 void LiberarMemoria(list<Proceso>& memoria, int idProceso) {
@@ -200,30 +244,138 @@ void LiberarMemoria(list<Proceso>& memoria, int idProceso) {
         if (it->getId() == idProceso) {
             int tamLiberado = (algoritmoActual == BUDDY_SYSTEM) ? it->getTamanioBloque() : it->getTamanioProceso();
             it->asignarDatos(Proceso(tamLiberado));
-            // TODO: Implementar condensacion de huecos adyacentes y fusion de buddies en la siguiente entrega
+
+            // 1. Mostrar estado inmediato al liberar el bloque (antes de condensar)
+            MostrarMemoria(memoria);
+            cout << endl;
+
+            // 2. Condensación / Fusión de huecos adyacentes
+            if (algoritmoActual == PRIMER_AJUSTE) {
+                bool huboCondensacion = false;
+
+                // Revisar hueco siguiente
+                auto itSig = next(it);
+                if (itSig != memoria.end() && itSig->getId() == 0) {
+                    it->setTamanioProceso(it->getTamanioProceso() + itSig->getTamanioProceso());
+                    it->setTamanioBloque(it->getTamanioProceso());
+                    memoria.erase(itSig);
+                    huboCondensacion = true;
+                }
+
+                // Revisar hueco anterior
+                if (it != memoria.begin()) {
+                    auto itAnt = prev(it);
+                    if (itAnt->getId() == 0) {
+                        itAnt->setTamanioProceso(itAnt->getTamanioProceso() + it->getTamanioProceso());
+                        itAnt->setTamanioBloque(itAnt->getTamanioProceso());
+                        memoria.erase(it);
+                        huboCondensacion = true;
+                    }
+                }
+
+                if (huboCondensacion) {
+                    cout << "Condensando huecos" << endl;
+                    MostrarMemoria(memoria);
+                    cout << endl;
+                }
+            } else {
+                // Fusión en cascada de bloques compañeros (Buddy System)
+                bool huboFusion = false;
+                bool fusionando = true;
+
+                while (fusionando) {
+                    fusionando = false;
+                    int offset = 0;
+                    for (auto b = memoria.begin(); b != memoria.end(); ++b) {
+                        int tamActual = b->getTamanioBloque();
+                        auto bSig = next(b);
+
+                        if (bSig != memoria.end() &&
+                            b->getId() == 0 && bSig->getId() == 0 &&
+                            tamActual == bSig->getTamanioBloque() &&
+                            (offset % (2 * tamActual) == 0)) {
+
+                            int nuevoTam = tamActual * 2;
+                            b->setTamanioProceso(nuevoTam);
+                            b->setTamanioBloque(nuevoTam);
+                            memoria.erase(bSig);
+
+                            huboFusion = true;
+                            fusionando = true;
+                            break;
+                        }
+                        offset += tamActual;
+                    }
+                }
+
+                if (huboFusion) {
+                    cout << "Fusionando buddies" << endl;
+                    MostrarMemoria(memoria);
+                    cout << endl;
+                }
+            }
             return;
         }
     }
 }
 
-// ==================== VISUALIZACIÓN EN CONSOLA ====================
+// ==================== VISUALIZACIÓN ====================
 
 void MostrarMemoria(const list<Proceso>& memoria) {
+    int offset = 0;
+    int mitadMemoria = tamanoMemoriaTotal / 2;
+
     for (const auto& bloque : memoria) {
         if (algoritmoActual == BUDDY_SYSTEM) {
-            cout << "[" << bloque.getId() << "," << bloque.getTamanioProceso()<< "/" << bloque.getTamanioBloque() << "K," << bloque.getTiempoRestante() << "]";
+            int tamBloque = bloque.getTamanioBloque();
+            ImprimirItem(bloque.getId(), tamBloque, (bloque.getId() == 0 ? 0 : bloque.getTiempoRestante()));
+            offset += tamBloque;
+
+            // Un único '*' justo en la frontera donde se divide la mitad izquierda de la derecha
+            if (offset == mitadMemoria) {
+                cout << "*";
+            }
         } else {
-            cout << bloque;
+            if (bloque.getId() == 0) {
+                ImprimirItem(0, bloque.getTamanioProceso(), 0);
+            } else {
+                ImprimirItem(bloque.getId(), bloque.getTamanioProceso(), bloque.getTiempoRestante());
+            }
         }
     }
 }
 
 void MostrarColaRR(const deque<Proceso>& colaRR) {
-    if (colaRR.empty()) {
-        cout << "(Vacia)";
-        return;
-    }
+    cout << "Cola RR";
     for (const auto& p : colaRR) {
-        cout << p << " ";
+        cout << " ";
+        ImprimirItem(p.getId(), p.getTamanioProceso(), p.getTiempoRestante());
+    }
+}
+
+void PausaControlada(int milisegundos) {
+    bool pausado = false;
+    int transcurrido = 0;
+    const int paso = 50;
+
+    while (transcurrido < milisegundos || pausado) {
+        if (_kbhit()) {
+            char tecla = _getch();
+            if (tecla == 27) { // ESC
+                detenerSimulacion = true;
+                return;
+            } else if (tecla == 32) { // ESPACIO
+                pausado = !pausado;
+                if (pausado) {
+                    cout << "[PAUSA - Presione espacio para continuar o esc para salir]" << endl;
+                } else {
+                    cout << "[REANUDADO]" << endl;
+                }
+            }
+        }
+        Sleep(paso);
+        if (!pausado) {
+            transcurrido += paso;
+        }
     }
 }
